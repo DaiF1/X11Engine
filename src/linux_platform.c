@@ -35,7 +35,8 @@ global_variable u32 bitmapHeight;
 global_variable i32 bytesPerPixel = 4;
 global_variable i32 screenDepth = 24;
 
-internal void RenderWeirdGradient(i32 xOffset, i32 yOffset)
+internal void
+RenderWeirdGradient(i32 xOffset, i32 yOffset)
 {
     u32 width = bitmapWidth;
     u32 height = bitmapHeight;
@@ -57,7 +58,8 @@ internal void RenderWeirdGradient(i32 xOffset, i32 yOffset)
     }
 }
 
-internal void ResizeDIBSection(Display *display, u32 width, u32 height)
+internal void
+X11ResizeDIBSection(Display *display, u32 width, u32 height)
 {
     if (bitmapImage)
         XDestroyImage(bitmapImage);
@@ -71,13 +73,15 @@ internal void ResizeDIBSection(Display *display, u32 width, u32 height)
     bitmapHeight = height;
 }
 
-internal void UpdateWindow(Display *display, Window window, GC gc,
+internal void
+X11UpdateWindow(Display *display, Window window, GC gc,
         i32 x, i32 y, u32 width, u32 height)
 {
     XPutImage(display, window, gc, bitmapImage, x, y, 0, 0, width, height);
 }
 
-internal void EventProcess(Display *display, Window window, GC gc, XEvent event)
+internal void
+X11EventProcess(Display *display, Window window, GC gc, XEvent event)
 {
     switch (event.type)
     {
@@ -91,8 +95,8 @@ internal void EventProcess(Display *display, Window window, GC gc, XEvent event)
         case ConfigureNotify:
         {
             XConfigureEvent e = event.xconfigure;
-            ResizeDIBSection(display, e.width, e.height);
-            UpdateWindow(display, window, gc, 0, 0, e.width, e.height);
+            X11ResizeDIBSection(display, e.width, e.height);
+            X11UpdateWindow(display, window, gc, 0, 0, e.width, e.height);
         } break;
 
         default:
@@ -100,7 +104,8 @@ internal void EventProcess(Display *display, Window window, GC gc, XEvent event)
     }
 }
 
-i32 main()
+i32
+main()
 {
     Display *display = XOpenDisplay((i8 *)0);
     i32 screen = DefaultScreen(display);
@@ -133,13 +138,13 @@ i32 main()
         {
             XEvent event;
             XNextEvent(display, &event);
-            EventProcess(display, window, gc, event);
+            X11EventProcess(display, window, gc, event);
         }
 
         if (bitmapBuffer)
         {
             RenderWeirdGradient(xOffset, 0);
-            UpdateWindow(display, window, gc, 0, 0, bitmapWidth, bitmapHeight);
+            X11UpdateWindow(display, window, gc, 0, 0, bitmapWidth, bitmapHeight);
         }
 
         xOffset++;
