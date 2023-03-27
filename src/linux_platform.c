@@ -45,6 +45,9 @@ global_variable bool running = true;
 global_variable x11_OffscreenBuffer globalBackBuffer;
 global_variable x11_WindowDimensions globalWindowDimensions;
 
+global_variable i32 xOffset = 0;
+global_variable i32 yOffset = 0;
+
 internal void
 RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
 {
@@ -127,6 +130,24 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
                     globalWindowDimensions);
         } break;
 
+        case KeyPress:
+        case KeyRelease:
+        {
+            char buff;
+            KeySym key;
+            if (XLookupString(&event.xkey, &buff, 1, &key, NULL))
+            {
+                if (buff == 'a')
+                    xOffset++;
+                if (buff == 'd')
+                    xOffset--;
+                if (buff == 'w')
+                    yOffset++;
+                if (buff == 's')
+                    yOffset--;
+            }
+        } break;
+
         default:
             break;
     }
@@ -149,7 +170,7 @@ main()
     XSetStandardProperties(display, window, "Window", "Window",
             None, NULL, 0, NULL);
 
-    XSelectInput(display, window, StructureNotifyMask);
+    XSelectInput(display, window, StructureNotifyMask|KeyPressMask|KeyReleaseMask);
 
     // Create GC
     GC gc = XCreateGC(display, window, 0, 0);
@@ -169,7 +190,6 @@ main()
     globalBackBuffer.memory = malloc(globalBackBuffer.width * globalBackBuffer.height * globalBackBuffer.bytesPerPixel);
     globalBackBuffer.screenDepth = DefaultDepth(display, screen);
 
-    i32 xOffset = 0;
     while (running)
     {
         while (XPending(display))
@@ -181,12 +201,10 @@ main()
 
         if (globalBackBuffer.image)
         {
-            RenderWeirdGradient(globalBackBuffer, xOffset, 0);
+            RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
             X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
                     globalWindowDimensions);
         }
-
-        xOffset++;
     }
 
     XFreeGC(display, gc);
