@@ -26,23 +26,27 @@ typedef unsigned long   u64;
 typedef float   f32;
 typedef double  f64;
 
-global_variable bool running = true;
-global_variable void *bitmapBuffer = NULL;
-global_variable XImage *bitmapImage = NULL;
+typedef struct x11_OffBuff {
+    void *memory;
+    XImage *image;
+    u32 width;
+    u32 height;
+    i32 bytesPerPixel;
+    i32 screenDepth;
 
-global_variable u32 bitmapWidth;
-global_variable u32 bitmapHeight;
-global_variable i32 bytesPerPixel = 4;
-global_variable i32 screenDepth = 24;
+} x11_OffscreenBuffer;
+
+global_variable bool running = true;
+global_variable x11_OffscreenBuffer globalBackBuffer;
 
 internal void
-RenderWeirdGradient(i32 xOffset, i32 yOffset)
+RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
 {
-    u32 width = bitmapWidth;
-    u32 height = bitmapHeight;
+    u32 width = buffer.width;
+    u32 height = buffer.height;
 
-    i32 pitch = width * bytesPerPixel;
-    u8 *row = (u8 *)bitmapBuffer;
+    i32 pitch = width * buffer.bytesPerPixel;
+    u8 *row = (u8 *)(buffer.memory);
     for (u32 y = 0; y < height; y++)
     {
         u8 *pixel = (u8 *)row;
@@ -59,25 +63,27 @@ RenderWeirdGradient(i32 xOffset, i32 yOffset)
 }
 
 internal void
-X11ResizeDIBSection(Display *display, u32 width, u32 height)
+X11ResizeDIBSection(Display *display, x11_OffscreenBuffer *buffer,
+        u32 width, u32 height)
 {
-    if (bitmapImage)
-        XDestroyImage(bitmapImage);
+    if (buffer->image)
+        XDestroyImage(buffer->image);
 
-    bitmapBuffer = calloc(width * height, bytesPerPixel);
-    bitmapImage = XCreateImage(display, CopyFromParent,
-            screenDepth, ZPixmap, 0,
-            (i8 *)bitmapBuffer, width, height, 32, 0);
+    buffer->memory = calloc(width * height, buffer->bytesPerPixel);
+    buffer->image = XCreateImage(display, CopyFromParent,
+            buffer->screenDepth, ZPixmap, 0,
+            (i8 *)(buffer->memory), width, height, 32, 0);
 
-    bitmapWidth = width;
-    bitmapHeight = height;
+    buffer->width = width;
+    buffer->height = height;
 }
 
 internal void
-X11UpdateWindow(Display *display, Window window, GC gc,
+X11DisplayScreenBuffer(Display *display, x11_OffscreenBuffer buffer,
+        Window window, GC gc,
         i32 x, i32 y, u32 width, u32 height)
 {
-    XPutImage(display, window, gc, bitmapImage, x, y, 0, 0, width, height);
+    XPutImage(display, window, gc, buffer.image, x, y, 0, 0, width, height);
 }
 
 internal void
@@ -87,16 +93,16 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
     {
         case DestroyNotify:
         {
-            printf("Destroy Notify\n");
-            XDestroyImage(bitmapImage);
+            XDestroyImage(globalBackBuffer.image);
             running = false;
         } break;
 
         case ConfigureNotify:
         {
             XConfigureEvent e = event.xconfigure;
-            X11ResizeDIBSection(display, e.width, e.height);
-            X11UpdateWindow(display, window, gc, 0, 0, e.width, e.height);
+            X11ResizeDIBSection(display, &globalBackBuffer, e.width, e.height);
+            X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
+                    0, 0, e.width, e.height);
         } break;
 
         default:
@@ -107,29 +113,39 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
 i32
 main()
 {
+    // Create display
     Display *display = XOpenDisplay((i8 *)0);
     i32 screen = DefaultScreen(display);
 
     u64 white = WhitePixel(display, screen);
     u64 black = BlackPixel(display, screen);
 
+    // Create Window
     Window window = XCreateSimpleWindow(display, DefaultRootWindow(display),
            0, 0, 800, 600, 0, black, white);
 
     XSetStandardProperties(display, window, "Window", "Window",
             None, NULL, 0, NULL);
 
+    XSelectInput(display, window, StructureNotifyMask);
+
+    // Create GC
     GC gc = XCreateGC(display, window, 0, 0);
 
     XSetBackground(display, gc, white);
     XSetForeground(display, gc, black);
 
+    // Show Window
     XClearWindow(display, window);
     XMapRaised(display, window);
 
-    XSelectInput(display, window, StructureNotifyMask);
-
-    screenDepth = DefaultDepth(display, screen);
+    // Init backbuffer
+    globalBackBuffer.memory = NULL;
+    globalBackBuffer.image = NULL;
+    globalBackBuffer.width = 0;
+    globalBackBuffer.height = 0;
+    globalBackBuffer.bytesPerPixel = 4;
+    globalBackBuffer.screenDepth = DefaultDepth(display, screen);
 
     i32 xOffset = 0;
     while (running)
@@ -141,10 +157,11 @@ main()
             X11EventProcess(display, window, gc, event);
         }
 
-        if (bitmapBuffer)
+        if (globalBackBuffer.memory)
         {
-            RenderWeirdGradient(xOffset, 0);
-            X11UpdateWindow(display, window, gc, 0, 0, bitmapWidth, bitmapHeight);
+            RenderWeirdGradient(globalBackBuffer, xOffset, 0);
+            X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
+                    0, 0, globalBackBuffer.width, globalBackBuffer.height);
         }
 
         xOffset++;
