@@ -33,6 +33,7 @@ global_variable XImage *bitmapImage = NULL;
 global_variable u32 bitmapWidth;
 global_variable u32 bitmapHeight;
 global_variable i32 bytesPerPixel = 4;
+global_variable i32 screenDepth = 24;
 
 internal void RenderWeirdGradient(i32 xOffset, i32 yOffset)
 {
@@ -56,15 +57,14 @@ internal void RenderWeirdGradient(i32 xOffset, i32 yOffset)
     }
 }
 
-internal void ResizeDIBSection(Display *display, i32 screen,
-        u32 width, u32 height)
+internal void ResizeDIBSection(Display *display, u32 width, u32 height)
 {
     if (bitmapImage)
         XDestroyImage(bitmapImage);
 
     bitmapBuffer = calloc(width * height, bytesPerPixel);
     bitmapImage = XCreateImage(display, CopyFromParent,
-            DefaultDepth(display, screen), ZPixmap, 0,
+            screenDepth, ZPixmap, 0,
             (i8 *)bitmapBuffer, width, height, 32, 0);
 
     bitmapWidth = width;
@@ -77,7 +77,7 @@ internal void UpdateWindow(Display *display, Window window, GC gc,
     XPutImage(display, window, gc, bitmapImage, x, y, 0, 0, width, height);
 }
 
-void EventProcess(Display *display, i32 screen, Window window, GC gc, XEvent event)
+internal void EventProcess(Display *display, Window window, GC gc, XEvent event)
 {
     switch (event.type)
     {
@@ -90,14 +90,8 @@ void EventProcess(Display *display, i32 screen, Window window, GC gc, XEvent eve
 
         case ConfigureNotify:
         {
-            int x, y;
-            unsigned int width, height, border, depth;
-            Window root;
-            XGetGeometry(display, window, &root, &x, &y, &width, &height, &border, &depth);
-
-
             XConfigureEvent e = event.xconfigure;
-            ResizeDIBSection(display, screen, e.width, e.height);
+            ResizeDIBSection(display, e.width, e.height);
             UpdateWindow(display, window, gc, 0, 0, e.width, e.height);
         } break;
 
@@ -130,6 +124,8 @@ i32 main()
 
     XSelectInput(display, window, StructureNotifyMask);
 
+    screenDepth = DefaultDepth(display, screen);
+
     i32 xOffset = 0;
     while (running)
     {
@@ -137,7 +133,7 @@ i32 main()
         {
             XEvent event;
             XNextEvent(display, &event);
-            EventProcess(display, screen, window, gc, event);
+            EventProcess(display, window, gc, event);
         }
 
         if (bitmapBuffer)
