@@ -36,8 +36,14 @@ typedef struct x11_OffBuff {
 
 } x11_OffscreenBuffer;
 
+typedef struct x11_WinDim {
+    u32 width;
+    u32 height;
+} x11_WindowDimensions;
+
 global_variable bool running = true;
 global_variable x11_OffscreenBuffer globalBackBuffer;
+global_variable x11_WindowDimensions globalWindowDimensions;
 
 internal void
 RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
@@ -69,21 +75,35 @@ X11ResizeDIBSection(Display *display, x11_OffscreenBuffer *buffer,
     if (buffer->image)
         XDestroyImage(buffer->image);
 
-    buffer->memory = calloc(width * height, buffer->bytesPerPixel);
+    u32 *dest_buffer = calloc(width * height, buffer->bytesPerPixel);
     buffer->image = XCreateImage(display, CopyFromParent,
             buffer->screenDepth, ZPixmap, 0,
-            (i8 *)(buffer->memory), width, height, 32, 0);
-
-    buffer->width = width;
-    buffer->height = height;
+            (i8 *)dest_buffer, width, height, 32, 0);
 }
 
 internal void
 X11DisplayScreenBuffer(Display *display, x11_OffscreenBuffer buffer,
-        Window window, GC gc,
-        i32 x, i32 y, u32 width, u32 height)
+        Window window, GC gc, x11_WindowDimensions dimensions)
 {
-    XPutImage(display, window, gc, buffer.image, x, y, 0, 0, width, height);
+    u32 *dest_buffer = (u32 *)buffer.image->data;
+    u32 *src_buffer = (u32 *)buffer.memory;
+
+    for (u32 y = 0; y < dimensions.height; y++)
+    {
+        for (u32 x = 0; x < dimensions.width; x++)
+        {
+            f32 dx = (f32)x / (f32)dimensions.width;
+            f32 dy = (f32)y / (f32)dimensions.height;
+
+            u32 u = (u32)(dx * (f32)buffer.width);
+            u32 v = (u32)(dy * (f32)buffer.height);
+
+            dest_buffer[y * dimensions.width + x] = src_buffer[v * buffer.width + u];
+        }
+    }
+
+    XPutImage(display, window, gc, buffer.image, 0, 0,
+            0, 0, dimensions.width, dimensions.height);
 }
 
 internal void
@@ -100,9 +120,11 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
         case ConfigureNotify:
         {
             XConfigureEvent e = event.xconfigure;
+            globalWindowDimensions.width = e.width;
+            globalWindowDimensions.height = e.height;
             X11ResizeDIBSection(display, &globalBackBuffer, e.width, e.height);
             X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
-                    0, 0, e.width, e.height);
+                    globalWindowDimensions);
         } break;
 
         default:
@@ -140,11 +162,11 @@ main()
     XMapRaised(display, window);
 
     // Init backbuffer
-    globalBackBuffer.memory = NULL;
     globalBackBuffer.image = NULL;
-    globalBackBuffer.width = 0;
-    globalBackBuffer.height = 0;
+    globalBackBuffer.width = 800;
+    globalBackBuffer.height = 600;
     globalBackBuffer.bytesPerPixel = 4;
+    globalBackBuffer.memory = malloc(globalBackBuffer.width * globalBackBuffer.height * globalBackBuffer.bytesPerPixel);
     globalBackBuffer.screenDepth = DefaultDepth(display, screen);
 
     i32 xOffset = 0;
@@ -157,11 +179,11 @@ main()
             X11EventProcess(display, window, gc, event);
         }
 
-        if (globalBackBuffer.memory)
+        if (globalBackBuffer.image)
         {
             RenderWeirdGradient(globalBackBuffer, xOffset, 0);
             X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
-                    0, 0, globalBackBuffer.width, globalBackBuffer.height);
+                    globalWindowDimensions);
         }
 
         xOffset++;
