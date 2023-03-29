@@ -277,6 +277,10 @@ main()
 
     XSelectInput(display, window, StructureNotifyMask|KeyPressMask|KeyReleaseMask);
 
+    // Set Dimensions Params
+    globalWindowDimensions.width = 800;
+    globalWindowDimensions.height = 600;
+
     // Create GC
     GC gc = XCreateGC(display, window, 0, 0);
 
@@ -296,6 +300,8 @@ main()
     globalBackBuffer.screenDepth = DefaultDepth(display, screen);
 
     X11InitSound();
+    X11ResizeDIBSection(display, &globalBackBuffer,
+            globalWindowDimensions.width, globalWindowDimensions.height);
 
     while (running)
     {
@@ -306,12 +312,9 @@ main()
             X11EventProcess(display, window, gc, event);
         }
 
-        if (globalBackBuffer.image)
-        {
-            RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
-            X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
-                    globalWindowDimensions);
-        }
+        RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+        X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
+                globalWindowDimensions);
     }
 
     snd_pcm_close(pcmHandle);
