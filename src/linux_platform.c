@@ -4,6 +4,8 @@
 
 #include <alsa/asoundlib.h>
 
+#include <alsa/error.h>
+#include <alsa/pcm.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <err.h>
@@ -47,7 +49,8 @@ typedef struct x11_WinDim {
 global_variable bool running = true;
 global_variable x11_OffscreenBuffer globalBackBuffer;
 global_variable x11_WindowDimensions globalWindowDimensions;
-global_variable snd_pcm_t *pcmHandle;
+global_variable snd_pcm_t *pcm;
+global_variable snd_pcm_hw_params_t *hw_params;
 
 global_variable i32 xOffset = 0;
 global_variable i32 yOffset = 0;
@@ -76,104 +79,31 @@ RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
 }
 
 internal void
-X11InitSound()
+X11InitALSA(i32 sampleRate)
 {
-    i32 err;
-    snd_pcm_hw_params_t *hwParams;
+    int err;
+    if ((err = snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0)
+        errx(1, "[InitSound]: Failed to open device (%s)\n", snd_strerror(err));
 
-    char *name = strdup("plughw:0,0");
-    err = snd_pcm_open(&pcmHandle, name, SND_PCM_STREAM_PLAYBACK, 0);
+    snd_pcm_hw_params_alloca(&hw_params);
+    if ((err = snd_pcm_hw_params_any(pcm, hw_params)) < 0)
+        errx(1, "[InitSound]: Failed initialize parameters (%s)\n", snd_strerror(err));
 
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to open sound device %s (%s)\n",
-                name, snd_strerror(err));
-    }
+    if ((err = snd_pcm_hw_params_set_access(pcm, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+        errx(1, "[InitSound]: Failed to set access (%s)\n", snd_strerror(err));
+    if ((err = snd_pcm_hw_params_set_format(pcm, hw_params, SND_PCM_FORMAT_S16_LE)) < 0)
+        errx(1, "[InitSound]: Failed to set format (%s)\n", snd_strerror(err));
+    if ((err = snd_pcm_hw_params_set_channels(pcm, hw_params, 2)) < 0)
+        errx(1, "[InitSound]: Failed to set channels (%s)\n", snd_strerror(err));
+    if ((err = snd_pcm_hw_params_set_rate(pcm, hw_params, sampleRate, 0)) < 0)
+        errx(1, "[InitSound]: Failed to set rate (%s)\n", snd_strerror(err));
+    if ((err = snd_pcm_hw_params_set_periods(pcm, hw_params, 10, 0)) < 0)
+        errx(1, "[InitSound]: Failed to set periods (%s)\n", snd_strerror(err));
+    if ((err = snd_pcm_hw_params_set_period_time(pcm, hw_params, 100000, 0)) < 0)
+        errx(1, "[InitSound]: Failed to set period time (%s)\n", snd_strerror(err));
 
-    err = snd_pcm_hw_params_malloc(&hwParams);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to allocate hardware parameter struct (%s)\n",
-                snd_strerror(err));
-    }
-
-    err = snd_pcm_hw_params_any(pcmHandle, hwParams);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to initialize hardware parameter struct (%s)\n",
-                snd_strerror(err));
-    }
-
-    u32 resample = 1;
-    err = snd_pcm_hw_params_set_rate_resample(pcmHandle, hwParams, resample);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to setup resampling for playback (%s)\n",
-                snd_strerror(err));
-    }
-
-    err = snd_pcm_hw_params_set_access(pcmHandle, hwParams, SND_PCM_ACCESS_RW_INTERLEAVED);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to set access type (%s)\n",
-                snd_strerror(err));
-    }
-
-    err = snd_pcm_hw_params_set_format(pcmHandle, hwParams, SND_PCM_FORMAT_S16_LE);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to set sample format (%s)\n",
-                snd_strerror(err));
-    }
-
-    err = snd_pcm_hw_params_set_channels(pcmHandle, hwParams, 2);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to set channel count (%s)\n",
-                snd_strerror(err));
-    }
-
-    u32 actualRate = 44100;
-    err = snd_pcm_hw_params_set_rate_near(pcmHandle, hwParams, &actualRate, 0);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to set sample rate (%s)\n",
-                snd_strerror(err));
-    }
-
-    if (actualRate < 44100)
-        printf("Sample rate set to %u\n", actualRate);
-
-    err = snd_pcm_hw_params(pcmHandle, hwParams);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to set parameters (%s)\n",
-                snd_strerror(err));
-    }
-
-    snd_pcm_uframes_t bufferSize;
-    snd_pcm_hw_params_get_buffer_size(hwParams, &bufferSize);
-    printf("Buffer Size: %u\n", (u32)bufferSize);
-    i32 sampleRate = snd_pcm_hw_params_get_sbits(hwParams);
-    printf("Sample Size: %i\n", sampleRate);
-
-    snd_pcm_hw_params_free(hwParams);
-
-    err = snd_pcm_prepare(pcmHandle);
-
-    if (err < 0)
-    {
-        errx(1, "[InitSound]: Failed to prepare audio interface (%s)\n",
-                snd_strerror(err));
-    }
+    if ((err = snd_pcm_hw_params(pcm, hw_params)) < 0)
+        errx(1, "[InitSound]: Failed to set parameters (%s)\n", snd_strerror(err));
 }
 
 internal void
@@ -299,9 +229,18 @@ main()
     globalBackBuffer.memory = malloc(globalBackBuffer.width * globalBackBuffer.height * globalBackBuffer.bytesPerPixel);
     globalBackBuffer.screenDepth = DefaultDepth(display, screen);
 
-    X11InitSound();
     X11ResizeDIBSection(display, &globalBackBuffer,
             globalWindowDimensions.width, globalWindowDimensions.height);
+
+    // Init sound
+    int sampleRate = 48000;
+    X11InitALSA(sampleRate);
+
+    int toneHz = 440;
+    int squareWavePeriod = sampleRate / toneHz;
+    int halfSquareWavePeriod = squareWavePeriod / 2;
+    int runningSampleIndex = 0;
+    i16 *buffer = malloc(sizeof(i16) * sampleRate * 2);
 
     while (running)
     {
@@ -313,11 +252,26 @@ main()
         }
 
         RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+
+        i16 *buff = buffer;
+        for (int i = 0; i < sampleRate; i++) {
+            i16 sample = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? 10000 : -10000;
+            *buff++ = sample;
+            *buff++ = sample;
+            runningSampleIndex++;
+        }
+
+        int err;
+        if ((err = snd_pcm_writei(pcm, buffer, sampleRate)) < 0)
+            errx(1, "[MainLoop]: Failed to write to sound buffer (%s)\n",
+                    snd_strerror(err));
+
         X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
                 globalWindowDimensions);
     }
+    snd_pcm_drain(pcm);
+    snd_pcm_close(pcm);
 
-    snd_pcm_close(pcmHandle);
     XFreeGC(display, gc);
     XCloseDisplay(display);
     return 0;
