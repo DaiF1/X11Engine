@@ -234,13 +234,15 @@ main()
 
     // Init sound
     int sampleRate = 48000;
+    int periodCount = 10;
     X11InitALSA(sampleRate);
 
     int toneHz = 440;
     int squareWavePeriod = sampleRate / toneHz;
     int halfSquareWavePeriod = squareWavePeriod / 2;
     int runningSampleIndex = 0;
-    i16 *buffer = malloc(sizeof(i16) * sampleRate * 2);
+    int bufferSize = sampleRate / periodCount;
+    i16 *buffer = malloc(sizeof(i16) * bufferSize * 2);
 
     while (running)
     {
@@ -254,7 +256,7 @@ main()
         RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
 
         i16 *buff = buffer;
-        for (int i = 0; i < sampleRate; i++) {
+        for (int i = 0; i < bufferSize; i++) {
             i16 sample = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? 10000 : -10000;
             *buff++ = sample;
             *buff++ = sample;
@@ -262,7 +264,7 @@ main()
         }
 
         int err;
-        if ((err = snd_pcm_writei(pcm, buffer, sampleRate)) < 0)
+        if ((err = snd_pcm_writei(pcm, buffer, bufferSize)) < 0)
             errx(1, "[MainLoop]: Failed to write to sound buffer (%s)\n",
                     snd_strerror(err));
 
