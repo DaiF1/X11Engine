@@ -4,8 +4,6 @@
 
 #include <alsa/asoundlib.h>
 
-#include <alsa/error.h>
-#include <alsa/pcm.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <err.h>
@@ -46,11 +44,19 @@ typedef struct x11_WinDim {
     u32 height;
 } x11_WindowDimensions;
 
+typedef struct x11_SoundBuff {
+    snd_pcm_t *handle;
+    snd_pcm_hw_params_t *params;
+    i32 sampleRate;
+    i32 periodCount;
+    i32 bufferSize;
+    i16 *data;
+} x11_SoundBuffer;
+
 global_variable bool running = true;
 global_variable x11_OffscreenBuffer globalBackBuffer;
 global_variable x11_WindowDimensions globalWindowDimensions;
-global_variable snd_pcm_t *pcm;
-global_variable snd_pcm_hw_params_t *hw_params;
+global_variable x11_SoundBuffer globalSoundBuffer;
 
 global_variable i32 xOffset = 0;
 global_variable i32 yOffset = 0;
@@ -79,30 +85,30 @@ RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
 }
 
 internal void
-X11InitALSA(i32 sampleRate)
+X11InitALSA(x11_SoundBuffer *buffer)
 {
     int err;
-    if ((err = snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0)
+    if ((err = snd_pcm_open(&buffer->handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0)
         errx(1, "[InitSound]: Failed to open device (%s)\n", snd_strerror(err));
 
-    snd_pcm_hw_params_alloca(&hw_params);
-    if ((err = snd_pcm_hw_params_any(pcm, hw_params)) < 0)
+    snd_pcm_hw_params_alloca(&buffer->params);
+    if ((err = snd_pcm_hw_params_any(buffer->handle, buffer->params)) < 0)
         errx(1, "[InitSound]: Failed initialize parameters (%s)\n", snd_strerror(err));
 
-    if ((err = snd_pcm_hw_params_set_access(pcm, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+    if ((err = snd_pcm_hw_params_set_access(buffer->handle, buffer->params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
         errx(1, "[InitSound]: Failed to set access (%s)\n", snd_strerror(err));
-    if ((err = snd_pcm_hw_params_set_format(pcm, hw_params, SND_PCM_FORMAT_S16_LE)) < 0)
+    if ((err = snd_pcm_hw_params_set_format(buffer->handle, buffer->params, SND_PCM_FORMAT_S16_LE)) < 0)
         errx(1, "[InitSound]: Failed to set format (%s)\n", snd_strerror(err));
-    if ((err = snd_pcm_hw_params_set_channels(pcm, hw_params, 2)) < 0)
+    if ((err = snd_pcm_hw_params_set_channels(buffer->handle, buffer->params, 2)) < 0)
         errx(1, "[InitSound]: Failed to set channels (%s)\n", snd_strerror(err));
-    if ((err = snd_pcm_hw_params_set_rate(pcm, hw_params, sampleRate, 0)) < 0)
+    if ((err = snd_pcm_hw_params_set_rate(buffer->handle, buffer->params, buffer->sampleRate, 0)) < 0)
         errx(1, "[InitSound]: Failed to set rate (%s)\n", snd_strerror(err));
-    if ((err = snd_pcm_hw_params_set_periods(pcm, hw_params, 10, 0)) < 0)
+    if ((err = snd_pcm_hw_params_set_periods(buffer->handle, buffer->params, buffer->periodCount, 0)) < 0)
         errx(1, "[InitSound]: Failed to set periods (%s)\n", snd_strerror(err));
-    if ((err = snd_pcm_hw_params_set_period_time(pcm, hw_params, 100000, 0)) < 0)
+    if ((err = snd_pcm_hw_params_set_period_time(buffer->handle, buffer->params, 100000, 0)) < 0)
         errx(1, "[InitSound]: Failed to set period time (%s)\n", snd_strerror(err));
 
-    if ((err = snd_pcm_hw_params(pcm, hw_params)) < 0)
+    if ((err = snd_pcm_hw_params(buffer->handle, buffer->params)) < 0)
         errx(1, "[InitSound]: Failed to set parameters (%s)\n", snd_strerror(err));
 }
 
@@ -226,23 +232,26 @@ main()
     globalBackBuffer.width = 800;
     globalBackBuffer.height = 600;
     globalBackBuffer.bytesPerPixel = 4;
-    globalBackBuffer.memory = malloc(globalBackBuffer.width * globalBackBuffer.height * globalBackBuffer.bytesPerPixel);
+    globalBackBuffer.memory = malloc(globalBackBuffer.width *
+            globalBackBuffer.height *
+            globalBackBuffer.bytesPerPixel);
     globalBackBuffer.screenDepth = DefaultDepth(display, screen);
 
     X11ResizeDIBSection(display, &globalBackBuffer,
             globalWindowDimensions.width, globalWindowDimensions.height);
 
-    // Init sound
-    int sampleRate = 48000;
-    int periodCount = 10;
-    X11InitALSA(sampleRate);
+    // Init sound Buffer
+    globalSoundBuffer.sampleRate = 48000;
+    globalSoundBuffer.periodCount = 10;
+    globalSoundBuffer.bufferSize =
+        globalSoundBuffer.sampleRate / globalSoundBuffer.periodCount;
+    globalSoundBuffer.data = malloc(sizeof(i16) * globalSoundBuffer.bufferSize * 2);
+    X11InitALSA(&globalSoundBuffer);
 
     int toneHz = 440;
-    int squareWavePeriod = sampleRate / toneHz;
+    int squareWavePeriod = globalSoundBuffer.sampleRate / toneHz;
     int halfSquareWavePeriod = squareWavePeriod / 2;
     int runningSampleIndex = 0;
-    int bufferSize = sampleRate / periodCount;
-    i16 *buffer = malloc(sizeof(i16) * bufferSize * 2);
 
     while (running)
     {
@@ -255,8 +264,8 @@ main()
 
         RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
 
-        i16 *buff = buffer;
-        for (int i = 0; i < bufferSize; i++) {
+        i16 *buff = globalSoundBuffer.data;
+        for (int i = 0; i < globalSoundBuffer.bufferSize; i++) {
             i16 sample = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? 10000 : -10000;
             *buff++ = sample;
             *buff++ = sample;
@@ -264,15 +273,17 @@ main()
         }
 
         int err;
-        if ((err = snd_pcm_writei(pcm, buffer, bufferSize)) < 0)
+        if ((err = snd_pcm_writei(globalSoundBuffer.handle,
+                        globalSoundBuffer.data,
+                        globalSoundBuffer.bufferSize)) < 0)
             errx(1, "[MainLoop]: Failed to write to sound buffer (%s)\n",
                     snd_strerror(err));
 
         X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
                 globalWindowDimensions);
     }
-    snd_pcm_drain(pcm);
-    snd_pcm_close(pcm);
+    snd_pcm_drain(globalSoundBuffer.handle);
+    snd_pcm_close(globalSoundBuffer.handle);
 
     XFreeGC(display, gc);
     XCloseDisplay(display);
