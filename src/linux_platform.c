@@ -212,6 +212,7 @@ main()
             None, NULL, 0, NULL);
 
     XSelectInput(display, window, StructureNotifyMask|KeyPressMask|KeyReleaseMask);
+    Atom wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", false);
 
     // Set Dimensions Params
     globalWindowDimensions.width = 800;
@@ -226,6 +227,7 @@ main()
     // Show Window
     XClearWindow(display, window);
     XMapRaised(display, window);
+    XSetWMProtocols(display, window, &wmDeleteMessage, 1);
 
     // Init backbuffer
     globalBackBuffer.image = NULL;
@@ -255,10 +257,16 @@ main()
 
     while (running)
     {
+        XEvent event;
         while (XPending(display))
         {
-            XEvent event;
             XNextEvent(display, &event);
+            if ((u32)event.xclient.data.l[0] == wmDeleteMessage)
+            {
+                running = false;
+                break;
+            }
+
             X11EventProcess(display, window, gc, event);
         }
 
@@ -286,6 +294,7 @@ main()
     snd_pcm_close(globalSoundBuffer.handle);
 
     XFreeGC(display, gc);
+    XDestroyWindow(display, window);
     XCloseDisplay(display);
     return 0;
 }
