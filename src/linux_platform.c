@@ -85,6 +85,22 @@ RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
 }
 
 internal void
+FillSoundBuffer(x11_SoundBuffer buffer, i32 toneHz)
+{
+    int squareWavePeriod = buffer.sampleRate / toneHz;
+    int halfSquareWavePeriod = squareWavePeriod / 2;
+    local_persist int runningSampleIndex = 0;
+
+    i16 *buff = buffer.data;
+    for (int i = 0; i < buffer.bufferSize; i++) {
+        i16 sample = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? 10000 : -10000;
+        *buff++ = sample;
+        *buff++ = sample;
+        runningSampleIndex++;
+    }
+}
+
+internal void
 X11InitALSA(x11_SoundBuffer *buffer)
 {
     int err;
@@ -110,6 +126,17 @@ X11InitALSA(x11_SoundBuffer *buffer)
 
     if ((err = snd_pcm_hw_params(buffer->handle, buffer->params)) < 0)
         errx(1, "[InitSound]: Failed to set parameters (%s)\n", snd_strerror(err));
+}
+
+internal void
+X11PlaySound(x11_SoundBuffer buffer)
+{
+    int err;
+    if ((err = snd_pcm_writei(buffer.handle,
+                    buffer.data,
+                    buffer.bufferSize)) < 0)
+        errx(1, "[MainLoop]: Failed to write to sound buffer (%s)\n",
+                snd_strerror(err));
 }
 
 internal void
@@ -251,9 +278,6 @@ main()
     X11InitALSA(&globalSoundBuffer);
 
     int toneHz = 440;
-    int squareWavePeriod = globalSoundBuffer.sampleRate / toneHz;
-    int halfSquareWavePeriod = squareWavePeriod / 2;
-    int runningSampleIndex = 0;
 
     while (running)
     {
@@ -271,25 +295,13 @@ main()
         }
 
         RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
-
-        i16 *buff = globalSoundBuffer.data;
-        for (int i = 0; i < globalSoundBuffer.bufferSize; i++) {
-            i16 sample = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? 10000 : -10000;
-            *buff++ = sample;
-            *buff++ = sample;
-            runningSampleIndex++;
-        }
-
-        int err;
-        if ((err = snd_pcm_writei(globalSoundBuffer.handle,
-                        globalSoundBuffer.data,
-                        globalSoundBuffer.bufferSize)) < 0)
-            errx(1, "[MainLoop]: Failed to write to sound buffer (%s)\n",
-                    snd_strerror(err));
+        FillSoundBuffer(globalSoundBuffer, toneHz);
 
         X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
                 globalWindowDimensions);
+        X11PlaySound(globalSoundBuffer);
     }
+
     snd_pcm_drain(globalSoundBuffer.handle);
     snd_pcm_close(globalSoundBuffer.handle);
 
