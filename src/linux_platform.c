@@ -11,26 +11,8 @@
 #include <math.h>
 #define PI 3.14159265358979f
 
-#define internal static
-#define local_persist static
-#define global_variable static
-
-#define bool int
-#define true 1
-#define false 0
-
-typedef char    i8;
-typedef short   i16;
-typedef int     i32;
-typedef long    i64;
-
-typedef unsigned char   u8;
-typedef unsigned short  u16;
-typedef unsigned int    u32;
-typedef unsigned long   u64;
-
-typedef float   f32;
-typedef double  f64;
+#include "types.h"
+#include "game.h"
 
 typedef struct x11_OffBuff {
     void *memory;
@@ -60,32 +42,6 @@ global_variable bool running = true;
 global_variable x11_OffscreenBuffer globalBackBuffer;
 global_variable x11_WindowDimensions globalWindowDimensions;
 global_variable x11_SoundBuffer globalSoundBuffer;
-
-global_variable i32 xOffset = 0;
-global_variable i32 yOffset = 0;
-
-internal void
-RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
-{
-    u32 width = buffer.width;
-    u32 height = buffer.height;
-
-    i32 pitch = width * buffer.bytesPerPixel;
-    u8 *row = (u8 *)(buffer.memory);
-    for (u32 y = 0; y < height; y++)
-    {
-        u8 *pixel = (u8 *)row;
-        for (u32 x = 0; x < width; x++)
-        {
-            *pixel++ = (u8)(x + xOffset);
-            *pixel++ = (u8)(y + yOffset);
-            *pixel++ = 0;
-            *pixel++ = 0;
-        }
-
-        row += pitch;
-    }
-}
 
 internal void
 FillSoundBuffer(x11_SoundBuffer buffer, i32 toneHz, i32 toneVolume)
@@ -207,14 +163,6 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
             KeySym key;
             if (XLookupString(&event.xkey, &buff, 1, &key, NULL))
             {
-                if (buff == 'a')
-                    xOffset++;
-                if (buff == 'd')
-                    xOffset--;
-                if (buff == 'w')
-                    yOffset++;
-                if (buff == 's')
-                    yOffset--;
             }
         } break;
 
@@ -279,6 +227,13 @@ main()
     globalSoundBuffer.data = malloc(sizeof(i16) * globalSoundBuffer.bufferSize * 2);
     X11InitALSA(&globalSoundBuffer);
 
+    // Create game backbuffer
+    game_OffscreenBuffer gameBackBuffer = {0};
+    gameBackBuffer.memory = globalBackBuffer.memory;
+    gameBackBuffer.width = globalBackBuffer.width;
+    gameBackBuffer.height = globalBackBuffer.height;
+    gameBackBuffer.pitch = globalBackBuffer.bytesPerPixel;
+
     int toneHz = 440;
 
     while (running)
@@ -296,7 +251,7 @@ main()
             X11EventProcess(display, window, gc, event);
         }
 
-        RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+        GameUpdateAndRender(gameBackBuffer);
         FillSoundBuffer(globalSoundBuffer, toneHz, 5000);
 
         X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
