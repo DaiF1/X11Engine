@@ -304,7 +304,6 @@ main()
         X11PlaySound(globalSoundBuffer);
     }
 
-    snd_pcm_drain(globalSoundBuffer.handle);
     snd_pcm_close(globalSoundBuffer.handle);
 
     XFreeGC(display, gc);
