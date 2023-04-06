@@ -9,7 +9,7 @@
 #include <err.h>
 
 #include <math.h>
-#define PI 3.14159265358979323846
+#define PI 3.14159265358979f
 
 #define internal static
 #define local_persist static
