@@ -121,7 +121,7 @@ X11InitALSA(x11_SoundBuffer *buffer)
         errx(1, "[InitSound]: Failed to set rate (%s)\n", snd_strerror(err));
     if ((err = snd_pcm_hw_params_set_periods(buffer->handle, buffer->params, buffer->periodCount, 0)) < 0)
         errx(1, "[InitSound]: Failed to set periods (%s)\n", snd_strerror(err));
-    if ((err = snd_pcm_hw_params_set_period_time(buffer->handle, buffer->params, 100000, 0)) < 0)
+    if ((err = snd_pcm_hw_params_set_period_time(buffer->handle, buffer->params, 10000, 0)) < 0)
         errx(1, "[InitSound]: Failed to set period time (%s)\n", snd_strerror(err));
 
     if ((err = snd_pcm_hw_params(buffer->handle, buffer->params)) < 0)
