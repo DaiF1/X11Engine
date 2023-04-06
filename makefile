@@ -1,7 +1,7 @@
 CC 	= gcc
 CFLAGS  =
 INCLUDE = ./include
-LIBS 	= -lX11 -lasound
+LIBS 	= -lm -lX11 -lasound
 
 OUT_DIR = ./build
 EXEC 	= main

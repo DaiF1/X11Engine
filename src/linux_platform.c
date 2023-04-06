@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <err.h>
 
+#include <math.h>
+#define PI 3.14159265358979323846
+
 #define internal static
 #define local_persist static
 #define global_variable static
@@ -85,18 +88,17 @@ RenderWeirdGradient(x11_OffscreenBuffer buffer, i32 xOffset, i32 yOffset)
 }
 
 internal void
-FillSoundBuffer(x11_SoundBuffer buffer, i32 toneHz)
+FillSoundBuffer(x11_SoundBuffer buffer, i32 toneHz, i32 toneVolume)
 {
-    int squareWavePeriod = buffer.sampleRate / toneHz;
-    int halfSquareWavePeriod = squareWavePeriod / 2;
-    local_persist int runningSampleIndex = 0;
+    int wavePeriod = buffer.sampleRate / toneHz;
+    local_persist f32 tSine = 0.f;
 
     i16 *buff = buffer.data;
     for (int i = 0; i < buffer.bufferSize; i++) {
-        i16 sample = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? 10000 : -10000;
+        tSine += 2.0f * PI * 1.0f / (f32)wavePeriod;
+        i16 sample = sinf(tSine) * toneVolume;
         *buff++ = sample;
         *buff++ = sample;
-        runningSampleIndex++;
     }
 }
 
@@ -295,7 +297,7 @@ main()
         }
 
         RenderWeirdGradient(globalBackBuffer, xOffset, yOffset);
-        FillSoundBuffer(globalSoundBuffer, toneHz);
+        FillSoundBuffer(globalSoundBuffer, toneHz, 5000);
 
         X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
                 globalWindowDimensions);
