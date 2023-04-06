@@ -8,9 +8,6 @@
 #include <stdlib.h>
 #include <err.h>
 
-#include <math.h>
-#define PI 3.14159265358979f
-
 #include "types.h"
 #include "game.h"
 
@@ -42,21 +39,6 @@ global_variable bool running = true;
 global_variable x11_OffscreenBuffer globalBackBuffer;
 global_variable x11_WindowDimensions globalWindowDimensions;
 global_variable x11_SoundBuffer globalSoundBuffer;
-
-internal void
-FillSoundBuffer(x11_SoundBuffer buffer, i32 toneHz, i32 toneVolume)
-{
-    int wavePeriod = buffer.sampleRate / toneHz;
-    local_persist f32 tSine = 0.f;
-
-    i16 *buff = buffer.data;
-    for (int i = 0; i < buffer.bufferSize; i++) {
-        tSine += 2.0f * PI * 1.0f / (f32)wavePeriod;
-        i16 sample = sinf(tSine) * toneVolume;
-        *buff++ = sample;
-        *buff++ = sample;
-    }
-}
 
 internal void
 X11InitALSA(x11_SoundBuffer *buffer)
@@ -227,14 +209,18 @@ main()
     globalSoundBuffer.data = malloc(sizeof(i16) * globalSoundBuffer.bufferSize * 2);
     X11InitALSA(&globalSoundBuffer);
 
-    // Create game backbuffer
+    // Create game buffers
     game_OffscreenBuffer gameBackBuffer = {0};
     gameBackBuffer.memory = globalBackBuffer.memory;
     gameBackBuffer.width = globalBackBuffer.width;
     gameBackBuffer.height = globalBackBuffer.height;
     gameBackBuffer.pitch = globalBackBuffer.bytesPerPixel;
 
-    int toneHz = 440;
+    game_SoundBuffer gameSoundBuffer = {0};
+    gameSoundBuffer.data = globalSoundBuffer.data;
+    gameSoundBuffer.bufferSize = globalSoundBuffer.bufferSize;
+    gameSoundBuffer.sampleRate = globalSoundBuffer.sampleRate;
+    gameSoundBuffer.volume = 5000;
 
     while (running)
     {
@@ -251,8 +237,7 @@ main()
             X11EventProcess(display, window, gc, event);
         }
 
-        GameUpdateAndRender(gameBackBuffer);
-        FillSoundBuffer(globalSoundBuffer, toneHz, 5000);
+        GameUpdateAndRender(gameBackBuffer, gameSoundBuffer);
 
         X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
                 globalWindowDimensions);

@@ -9,4 +9,13 @@ typedef struct
     u32 pitch;
 } game_OffscreenBuffer;
 
-void GameUpdateAndRender(game_OffscreenBuffer buffer);
+typedef struct
+{
+    i16 *data;
+    i32 bufferSize;
+    i32 sampleRate;
+    i32 volume;
+} game_SoundBuffer;
+
+void GameUpdateAndRender(game_OffscreenBuffer screenBuffer,
+        game_SoundBuffer soundBuffer);
