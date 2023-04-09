@@ -39,6 +39,7 @@ global_variable bool running = true;
 global_variable x11_OffscreenBuffer globalBackBuffer;
 global_variable x11_WindowDimensions globalWindowDimensions;
 global_variable x11_SoundBuffer globalSoundBuffer;
+global_variable Input input;
 
 internal void
 X11InitALSA(x11_SoundBuffer *buffer)
@@ -139,12 +140,50 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
         } break;
 
         case KeyPress:
+        {
+            char buff;
+            KeySym key;
+            if (XLookupString(&event.xkey, &buff, 1, &key, NULL))
+            {
+                switch (buff)
+                {
+                    case 'a':
+                        input.x = 5;
+                        break;
+                    case 'd':
+                        input.x = -5;
+                        break;
+                    case 'w':
+                        input.y = 5;
+                        break;
+                    case 's':
+                        input.y = -5;
+                        break;
+                }
+            }
+        } break;
+
         case KeyRelease:
         {
             char buff;
             KeySym key;
             if (XLookupString(&event.xkey, &buff, 1, &key, NULL))
             {
+                switch (buff)
+                {
+                    case 'a':
+                        input.x = (input.x > 0) ? 0 : input.x;
+                        break;
+                    case 'd':
+                        input.x = (input.x < 0) ? 0 : input.x;
+                        break;
+                    case 'w':
+                        input.y = (input.y > 0) ? 0 : input.y;
+                        break;
+                    case 's':
+                        input.y = (input.y < 0) ? 0 : input.y;
+                        break;
+                }
             }
         } break;
 
@@ -237,7 +276,7 @@ main()
             X11EventProcess(display, window, gc, event);
         }
 
-        GameUpdateAndRender(gameBackBuffer, gameSoundBuffer);
+        GameUpdateAndRender(gameBackBuffer, gameSoundBuffer, input);
 
         X11DisplayScreenBuffer(display, globalBackBuffer, window, gc,
                 globalWindowDimensions);

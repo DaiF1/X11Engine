@@ -44,11 +44,17 @@ FillSoundBuffer(game_SoundBuffer buffer, i32 toneHz)
 
 void
 GameUpdateAndRender(game_OffscreenBuffer screenBuffer,
-        game_SoundBuffer soundBuffer)
+        game_SoundBuffer soundBuffer, Input input)
 {
     local_persist i32 xOffset = 0;
     local_persist i32 yOffset = 0;
     local_persist i32 toneHz = 440;
+
+    xOffset += input.x;
+    yOffset += input.y;
+
+    toneHz = 440 + input.y;
+
     RenderWeirdGradient(screenBuffer, xOffset, yOffset);
     FillSoundBuffer(soundBuffer, toneHz);
 }

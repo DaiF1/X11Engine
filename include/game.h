@@ -17,5 +17,19 @@ typedef struct
     i32 volume;
 } game_SoundBuffer;
 
+typedef struct {
+    bool changed;
+    bool isDown;
+} Button;
+
+typedef enum {
+    BUTTON_COUNT
+} ButtonType;
+
+typedef struct {
+    Button buttons[BUTTON_COUNT];
+    float x, y;
+} Input;
+
 void GameUpdateAndRender(game_OffscreenBuffer screenBuffer,
-        game_SoundBuffer soundBuffer);
+        game_SoundBuffer soundBuffer, Input input);
