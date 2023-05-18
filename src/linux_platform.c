@@ -4,8 +4,11 @@
 
 #include <alsa/asoundlib.h>
 
+#include <linux/joystick.h>
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <err.h>
 
 #include "types.h"
@@ -119,7 +122,8 @@ X11DisplayScreenBuffer(Display *display, x11_OffscreenBuffer buffer,
 }
 
 internal void
-X11EventProcess(Display *display, Window window, GC gc, XEvent event)
+X11EventProcess(Display *display, Window window, GC gc, XEvent event,
+        bool useController)
 {
     switch (event.type)
     {
@@ -141,6 +145,9 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
 
         case KeyPress:
         {
+            if (useController)
+                break;
+
             char buff;
             KeySym key;
             if (XLookupString(&event.xkey, &buff, 1, &key, NULL))
@@ -165,6 +172,9 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
 
         case KeyRelease:
         {
+            if (useController)
+                break;
+
             char buff;
             KeySym key;
             if (XLookupString(&event.xkey, &buff, 1, &key, NULL))
@@ -189,6 +199,39 @@ X11EventProcess(Display *display, Window window, GC gc, XEvent event)
 
         default:
             break;
+    }
+}
+
+internal void
+X11GamepadInputProcess(int js)
+{
+    struct js_event event;
+    while (read(js, &event, sizeof(event)) > 0)
+    {
+        event.type &= ~JS_EVENT_INIT;
+        switch (event.type)
+        {
+            case JS_EVENT_BUTTON:
+            {
+                printf("Button %u %s\n", event.number, event.value ? "pressed" : "released");
+            } break;
+
+            case JS_EVENT_AXIS:
+            {
+                u32 axis = event.number / 2;
+
+                if (axis == 0)
+                {
+                    if (event.number % 2 == 0)
+                        input.x = -event.value / 32767 * 5;
+                    else
+                        input.y = -event.value / 32676 * 5;
+                }
+            } break;
+
+            default:
+                break;
+        }
     }
 }
 
@@ -261,6 +304,9 @@ main()
     gameSoundBuffer.sampleRate = globalSoundBuffer.sampleRate;
     gameSoundBuffer.volume = 5000;
 
+    // Input
+    bool useController = false;
+
     while (running)
     {
         XEvent event;
@@ -273,7 +319,25 @@ main()
                 break;
             }
 
-            X11EventProcess(display, window, gc, event);
+            X11EventProcess(display, window, gc, event, useController);
+        }
+
+        int gamepadMaxCount = 4;
+        int gamepadPathLength = 15;
+        useController = false;
+        for (int i = 0; i < gamepadMaxCount; i++)
+        {
+            char *device = malloc(gamepadPathLength * sizeof(char));
+            sprintf(device, "/dev/input/js%i", i);
+            int js = open(device, O_RDONLY | O_NONBLOCK);
+
+            if (js != -1)
+            {
+                useController = true;
+                X11GamepadInputProcess(js);
+            }
+
+            close(js);
         }
 
         GameUpdateAndRender(gameBackBuffer, gameSoundBuffer, input);
