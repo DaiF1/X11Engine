@@ -338,6 +338,7 @@ main()
             }
 
             close(js);
+            free(device);
         }
 
         GameUpdateAndRender(gameBackBuffer, gameSoundBuffer, input);
